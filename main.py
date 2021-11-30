@@ -2,7 +2,8 @@
 - Status
 - SEO
 - Log
-- Saco el merge
+    with open("log/initial_state.json", "w") as f:
+        json.dump(initial_state, f)
 - Push Repo
 - Options / Variants
 - Push Heladeras
@@ -73,20 +74,7 @@ def get_initial_state(soup):
     data = raw.split("window.__INITIAL_STATE__ = ")[1].split(";\n")[0]
     parsed = json.loads(data)
     initial_state = parsed["products_view_extended_product"]
-    with open("log/initial_state.json", "w") as f:
-        json.dump(initial_state, f)
     return initial_state
-
-
-def merge(api, sku_tags):
-    for x in api:
-        if x["product_code"] in sku_tags:
-            x["status"] = "active"
-            x["tags"] = sku_tags[x["product_code"]]
-        else:
-            x["status"] = "draft"
-            x["tags"] = "Bar Fridges Australia, All Bar Fridges"
-    return api
 
 
 def calculate_cost(price):
@@ -127,40 +115,21 @@ def get_options(initial_state):
     ]
 
 
-def get_variants(options, x, initial_state):
-    variants = []
-    for count, option in enumerate(options["values"]):
-        variants.append(
-            {
-                "title": option,
-                "price": x["price"],
-                "sku": f'{x["product_code"]}-{count}',
-                "position": 1,
-                "inventory_policy": "deny",
-                "compare_at_price": None,
-                "fulfillment_service": "manual",
-                "inventory_management": "shopify",
-                "option1": option,
-                "option2": None,
-                "option3": None,
-                "taxable": False,
-                "barcode": "",
-                "image_id": None,
-                "weight": x["weight"],
-                "weight_unit": "kg",
-                "inventory_quantity": int(initial_state["quantity"]),
-                "requires_shipping": True,
-            }
-        )
-    return variants
-
-
 try:
-    merged = merge(fetch(), get_sku_tags())
-    for x in merged[:1]:
+    api = fetch()
+    sku_tags = get_sku_tags()
+    for x in api[:1]:
         url = get_url(x["product_code"])
         soup = BeautifulSoup(requests.get(url).content, "html.parser")
         initial_state = get_initial_state(soup)
+
+        # Conditional configs
+        if x["product_code"] in sku_tags:
+            x["status"] = "active"
+            x["tags"] = sku_tags[x["product_code"]]
+        else:
+            x["status"] = "draft"
+            x["tags"] = "Bar Fridges Australia, All Bar Fridges"
 
         # Create Product
         p = requests.post(
