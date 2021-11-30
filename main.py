@@ -1,16 +1,16 @@
 """
-- Status
-- SEO
 - Log
     with open("log/initial_state.json", "w") as f:
         json.dump(initial_state, f)
-- Push Repo
 - Options / Variants
+- Fix SEO descriptions starts with: "OVERVIEW PRODUCT SNAPSHOT: ..."
+- Replace Images for <h1>Info / Building In/ warranty 
 - Push Heladeras
 - (Add from data/urls)
 """
 import csv
 import json
+import itertools
 from dotenv import dotenv_values
 import requests
 from requests.models import HTTPBasicAuth
@@ -118,18 +118,75 @@ def get_options(initial_state):
 try:
     api = fetch()
     sku_tags = get_sku_tags()
-    for x in api[:1]:
+    for x in api[4:]:
         url = get_url(x["product_code"])
         soup = BeautifulSoup(requests.get(url).content, "html.parser")
         initial_state = get_initial_state(soup)
 
-        # Conditional configs
-        if x["product_code"] in sku_tags:
-            x["status"] = "active"
-            x["tags"] = sku_tags[x["product_code"]]
-        else:
-            x["status"] = "draft"
-            x["tags"] = "Bar Fridges Australia, All Bar Fridges"
+        x["status"] = "active" if x["product_code"] in sku_tags else "draft"
+        x["tags"] = (
+            sku_tags[x["product_code"]]
+            if x["product_code"] in sku_tags
+            else "Bar Fridges Australia, All Bar Fridges"
+        )
+
+        options = []
+        for option in (
+            initial_state["warranty_options"] + initial_state["product_options"]
+        ):
+            options.append(
+                {
+                    "name": option["option_name"],
+                    "values": [
+                        v["variant_name"] for _, v in option["variants"].items()
+                    ][:3],
+                }
+            )
+
+        variants = []
+        combinations = list(itertools.product(*[o["values"] for o in options]))
+        for count, combination in enumerate(combinations):
+            variants.append(
+                {
+                    "title": combination,
+                    "price": int(x["price"]) + count,
+                    "sku": f'{x["product_code"]}-{count}',
+                    "inventory_policy": "deny",
+                    "compare_at_price": None,
+                    "fulfillment_service": "manual",
+                    "inventory_management": "shopify",
+                    "option1": combination[0] if len(combination) > 0 else None,
+                    "option2": combination[1] if len(combination) > 1 else None,
+                    "option3": combination[2] if len(combination) > 2 else None,
+                    "taxable": False,
+                    "barcode": "",
+                    "image_id": None,
+                    "weight": x["weight"],
+                    "weight_unit": "kg",
+                    "inventory_quantity": int(initial_state["quantity"]),
+                    "requires_shipping": True,
+                }
+            )
+        # variants.append({
+        #     "title": options[0]["name"],
+        #     "price": x["price"],
+        #     "sku": f'{x["product_code"]}',
+        #     # "position": 1,
+        #     "inventory_policy": "deny",
+        #     "compare_at_price": None,
+        #     "fulfillment_service": "manual",
+        #     "inventory_management": "shopify",
+        #     "option1": options[0]["values"][0],
+        #     "option2": None,
+        #     "option3": None,
+        #     "taxable": False,
+        #     "barcode": "",
+        #     "image_id": None,
+        #     "weight": x["weight"],
+        #     "weight_unit": "kg",
+        #     "inventory_quantity": int(initial_state["quantity"]),
+        #     "requires_shipping": True,
+        # })
 
         # Create Product
         p = requests.post(
@@ -140,36 +197,16 @@ try:
                     # Harcoded
                     "product_type": "Refrigerator",
                     "template_suffix": "barfridgesaustralia",
-                    # Calculated
-                    "body_html": get_body_html(soup),
-                    "options": get_options(initial_state),
-                    "variants": [
-                        {
-                            "title": "first",
-                            "price": x["price"],
-                            "sku": f'{x["product_code"]}',
-                            "position": 1,
-                            "inventory_policy": "deny",
-                            "compare_at_price": None,
-                            "fulfillment_service": "manual",
-                            "inventory_management": "shopify",
-                            "option1": "first",
-                            "option2": None,
-                            "option3": None,
-                            "taxable": False,
-                            "barcode": "",
-                            "image_id": None,
-                            "weight": x["weight"],
-                            "weight_unit": "kg",
-                            "inventory_quantity": int(initial_state["quantity"]),
-                            "requires_shipping": True,
-                        }
-                    ],
-                    "images": [{"src": i} for i in x["product_images"]],
                     # Read
+                    "status": x["status"],
+                    "tags": x["tags"],
                     "title": x["product_name"],
                     "vendor": x["brand"],
-                    "tags": x["tags"],
+                    "images": [{"src": i} for i in x["product_images"]],
+                    # Calculated
+                    "options": options,
+                    "variants": variants,
+                    "body_html": get_body_html(soup),
                 }
             },
         ).json()["product"]
