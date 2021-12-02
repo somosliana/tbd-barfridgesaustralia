@@ -1,11 +1,12 @@
 """
-- Log
-    with open("log/initial_state.json", "w") as f:
-        json.dump(initial_state, f)
-- Options / Variants
+- Shipping Rules
+- Push un par
+- Fix CSS: Las imagenes de titulos mobile/desktop
+- Push all Heladeras
+----------------------
+# Next
+- Log: with open("log/initial_state.json", "w") as f: json.dump(initial_state, f)
 - Fix SEO descriptions starts with: "OVERVIEW PRODUCT SNAPSHOT: ..."
-- Replace Images for <h1>Info / Building In/ warranty 
-- Push Heladeras
 - (Add from data/urls)
 """
 import csv
@@ -64,8 +65,7 @@ def get_body_html(soup):
     parent = "#bfa-vue-app > div > div:nth-child(2) > section > div > div > div"
     info = soup.select(f"{parent} > div:nth-child(2)")[0]
     installation = soup.select(f"{parent} > div:nth-child(4)")[0]
-    warranty = soup.select(f"{parent} > div:nth-child(6)")[0]
-
+    warranty = soup.select(f"{parent} > div:nth-child(6)")[0] if len(soup.select(f"{parent} > div:nth-child(6)")) > 0 else ''
     return f"{info}\n{installation}\n{warranty}"
 
 
@@ -84,42 +84,15 @@ def calculate_cost(price):
     return price - difference
 
 
-def add_metadata(p, value_type, namespace, key, value):
-    r = requests.put(
-        url=f'{ROOT}/products/{p["id"]}.json',
-        headers={"Content-Type": "application/json"},
-        json={
-            "product": {
-                "id": p["id"],
-                "metafields": [
-                    {
-                        "namespace": namespace,
-                        "key": key,
-                        "value": value,
-                        "value_type": value_type,
-                    }
-                ],
-            }
-        },
-    )
-
-
-def get_options(initial_state):
-    w = initial_state["warranty_options"][0]
-    return [
-        {
-            "position": 1,
-            "name": w["option_name"],
-            "values": [w["variants"][v]["variant_name"] for v in w["variants"]][:3],
-        }
-    ]
-
-
 try:
     api = fetch()
     sku_tags = get_sku_tags()
-    for x in api[4:]:
-        url = get_url(x["product_code"])
+    for x in api[3:10]:
+        try:
+            url = get_url(x["product_code"])
+        except IndexError:
+            print(f'❌ {x["product_code"]}')
+            continue
         soup = BeautifulSoup(requests.get(url).content, "html.parser")
         initial_state = get_initial_state(soup)
 
@@ -130,10 +103,13 @@ try:
             else "Bar Fridges Australia, All Bar Fridges"
         )
 
-        options = []
-        for option in (
+        # Options/Variants
+        bfa_options = (
             initial_state["warranty_options"] + initial_state["product_options"]
-        ):
+        )
+        # Options
+        options = []
+        for option in bfa_options:
             options.append(
                 {
                     "name": option["option_name"],
@@ -143,50 +119,39 @@ try:
                 }
             )
 
+        # Variants
+        combinations = []
+        for option in bfa_options:
+            variant = []
+            for _, v in option["variants"].items():
+                variant.append((v["modifier"], v["variant_name"]))
+            combinations.append(variant)
+
         variants = []
-        combinations = list(itertools.product(*[o["values"] for o in options]))
-        for count, combination in enumerate(combinations):
+        for count, combination in enumerate(list(itertools.product(*combinations))):
+            aditional = sum([float(i[0]) for i in combination])
+            titles = [i[1].strip(" ") for i in combination]
             variants.append(
                 {
-                    "title": combination,
-                    "price": int(x["price"]) + count,
+                    "title": " / ".join(titles),
                     "sku": f'{x["product_code"]}-{count}',
+                    "price": int(x["price"]) + int(aditional),
+                    "weight": x["weight"],
+                    "inventory_quantity": int(initial_state["quantity"]),
+                    "option1": titles[0] if len(titles) > 0 else None,
+                    "option2": titles[1] if len(titles) > 1 else None,
+                    "option3": titles[2] if len(titles) > 2 else None,
+                    "taxable": False,
                     "inventory_policy": "deny",
                     "compare_at_price": None,
                     "fulfillment_service": "manual",
                     "inventory_management": "shopify",
-                    "option1": combination[0] if len(combination) > 0 else None,
-                    "option2": combination[1] if len(combination) > 1 else None,
-                    "option3": combination[2] if len(combination) > 2 else None,
-                    "taxable": False,
                     "barcode": "",
                     "image_id": None,
-                    "weight": x["weight"],
                     "weight_unit": "kg",
-                    "inventory_quantity": int(initial_state["quantity"]),
                     "requires_shipping": True,
                 }
             )
-        # variants.append({
-        #     "title": options[0]["name"],
-        #     "price": x["price"],
-        #     "sku": f'{x["product_code"]}',
-        #     # "position": 1,
-        #     "inventory_policy": "deny",
-        #     "compare_at_price": None,
-        #     "fulfillment_service": "manual",
-        #     "inventory_management": "shopify",
-        #     "option1": options[0]["values"][0],
-        #     "option2": None,
-        #     "option3": None,
-        #     "taxable": False,
-        #     "barcode": "",
-        #     "image_id": None,
-        #     "weight": x["weight"],
-        #     "weight_unit": "kg",
-        #     "inventory_quantity": int(initial_state["quantity"]),
-        #     "requires_shipping": True,
-        # })
 
         # Create Product
         p = requests.post(
@@ -207,20 +172,43 @@ try:
                     "options": options,
                     "variants": variants,
                     "body_html": get_body_html(soup),
+                    "metafields": [
+                        {
+                            "namespace": "source",
+                            "key": "url",
+                            "value": url,
+                            "value_type": "string",
+                        },
+                        {
+                            "namespace": "source",
+                            "key": "product_id",
+                            "value": x["product_id"],
+                            "value_type": "string",
+                        },
+                        {
+                            "namespace": "dimensions",
+                            "key": "depth",
+                            "value": int(x["depth"]),
+                            "value_type": "integer",
+                        },
+                        {
+                            "namespace": "dimensions",
+                            "key": "height",
+                            "value": int(x["height"]),
+                            "value_type": "integer",
+                        },
+                        {
+                            "namespace": "dimensions",
+                            "key": "width",
+                            "value": int(x["width"]),
+                            "value_type": "integer",
+                        },
+                    ],
                 }
             },
         ).json()["product"]
         print(f"🔗 https://thebigdino.myshopify.com/admin/products/{p['id']}")
-
-        """
-        # Add metafields
-        add_metadata(p, "string", "source", "url", url)
-        add_metadata(p, "string", "source", "product_id", x["product_id"])
-        add_metadata(p, "integer", "dimensions", "depth", x["depth"])
-        add_metadata(p, "integer", "dimensions", "height", x["height"])
-        add_metadata(p, "integer", "dimensions", "width", x["width"])
-        # done!
-        """
+        # ).json(); print(p)
 
 except KeyboardInterrupt:
     pass
