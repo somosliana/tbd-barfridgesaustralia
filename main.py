@@ -1,14 +1,3 @@
-"""
-- Fix CSS: Las imagenes de titulos mobile/desktop
-- Push all Heladeras
-----------------------
-# Next
-- Fix Shipping Rules Manuales por el momento
-- Precio a las options
-- Log: with open("log/initial_state.json", "w") as f: json.dump(initial_state, f)
-- Fix SEO descriptions starts with: "OVERVIEW PRODUCT SNAPSHOT: ..."
-- (Add from data/urls)
-"""
 import csv
 import json
 import itertools
@@ -136,7 +125,7 @@ try:
         for option in bfa_options:
             options.append(
                 {
-                    "name": option["option_name"],
+                    "name": option["option_name"] if option["option_name"] != "BFA Commercial" else "Warranty",
                     "values": [
                         v["variant_name"] for _, v in option["variants"].items()
                     ][:3],
@@ -209,6 +198,12 @@ try:
                             "namespace": "source",
                             "key": "product_id",
                             "value": x["product_id"],
+                            "value_type": "string",
+                        },
+                        {
+                            "namespace": "source",
+                            "key": "product_code",
+                            "value": x["product_code"],
                             "value_type": "string",
                         },
                         {
