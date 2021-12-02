@@ -1,10 +1,10 @@
 """
-- Shipping Rules
-- Push un par
 - Fix CSS: Las imagenes de titulos mobile/desktop
 - Push all Heladeras
 ----------------------
 # Next
+- Fix Shipping Rules Manuales por el momento
+- Precio a las options
 - Log: with open("log/initial_state.json", "w") as f: json.dump(initial_state, f)
 - Fix SEO descriptions starts with: "OVERVIEW PRODUCT SNAPSHOT: ..."
 - (Add from data/urls)
@@ -54,7 +54,7 @@ def get_url(sku):
     return result["link"]
 
 
-def get_body_html(soup):
+def _get_body_html(soup):
     for a in soup.findAll("a"):
         a["href"] = f'https://www.bar-fridges-australia.com.au/{a["href"]}'
     for img in soup.find_all("img"):
@@ -84,10 +84,34 @@ def calculate_cost(price):
     return price - difference
 
 
+def get_body_html(soup):
+    # Fix anchors
+    for a in soup.findAll("a"):
+        a["href"] = f'https://www.bar-fridges-australia.com.au/{a["href"]}'
+    # Fix images
+    for img in soup.find_all("img"):
+        try:
+            img["src"] = f'https://www.bar-fridges-australia.com.au/{img["src"]}'
+        except:
+            continue
+
+    body_html = []
+    parent = soup.select("#bfa-vue-app > div > div:nth-child(2) > section > div > div > div")[0]
+    for child in parent.findChildren("div", recursive=False):
+        banner_img = child.find('img', {'class': 'product-guide-header-image-large'})
+        if banner_img:
+            section_title = banner_img['alt'].split('Bar Fridges Australia ')[1].split(' header')[0]
+            if section_title in ['information', 'building in', 'warranty']:
+                body_html.append(child.prettify())
+    return ''.join(body_html)
+
+
+    return parent
+
 try:
     api = fetch()
     sku_tags = get_sku_tags()
-    for x in api[3:10]:
+    for x in api[4:10]:
         try:
             url = get_url(x["product_code"])
         except IndexError:
@@ -153,6 +177,8 @@ try:
                 }
             )
 
+        body_html = get_body_html(soup)
+
         # Create Product
         p = requests.post(
             url=f"{ROOT}/products.json",
@@ -171,7 +197,7 @@ try:
                     # Calculated
                     "options": options,
                     "variants": variants,
-                    "body_html": get_body_html(soup),
+                    "body_html": body_html,
                     "metafields": [
                         {
                             "namespace": "source",
