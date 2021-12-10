@@ -37,25 +37,10 @@ def get_url(sku):
     r = requests.get(url)
     items = r.json()["items"]
     result = list(
-        filter(lambda x: x["product_code"] == sku and int(x["quantity"]) >= 0, items)
+        filter(lambda x: x["product_code"] == sku and int(x["quantity"]) > 0, items)
     )[0]
 
     return result["link"]
-
-
-def _get_body_html(soup):
-    for a in soup.findAll("a"):
-        a["href"] = f'https://www.bar-fridges-australia.com.au/{a["href"]}'
-    for img in soup.find_all("img"):
-        try:
-            img["src"] = f'https://www.bar-fridges-australia.com.au/{img["src"]}'
-        except:
-            continue
-    parent = "#bfa-vue-app > div > div:nth-child(2) > section > div > div > div"
-    info = soup.select(f"{parent} > div:nth-child(2)")[0]
-    installation = soup.select(f"{parent} > div:nth-child(4)")[0]
-    warranty = soup.select(f"{parent} > div:nth-child(6)")[0] if len(soup.select(f"{parent} > div:nth-child(6)")) > 0 else ''
-    return f"{info}\n{installation}\n{warranty}"
 
 
 def get_initial_state(soup):
@@ -83,6 +68,10 @@ def get_body_html(soup):
             img["src"] = f'https://www.bar-fridges-australia.com.au/{img["src"]}'
         except:
             continue
+    # Fix video
+    for vid in soup.findAll("source"):
+        vid["src"] = f'https://www.bar-fridges-australia.com.au{vid["src"]}'
+        print(vid["src"])
 
     body_html = []
     parent = soup.select("#bfa-vue-app > div > div:nth-child(2) > section > div > div > div")[0]
@@ -94,13 +83,10 @@ def get_body_html(soup):
                 body_html.append(child.prettify())
     return ''.join(body_html)
 
-
-    return parent
-
 try:
     api = fetch()
     sku_tags = get_sku_tags()
-    for x in api[4:10]:
+    for x in api[:50]:
         try:
             url = get_url(x["product_code"])
         except IndexError:
